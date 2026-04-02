@@ -1,0 +1,81 @@
+name: Livraison des images Docker
+
+on:
+  workflow_run:
+    workflows:
+      - Validation continue
+    types:
+      - completed
+    branches:
+      - main
+
+env:
+  REGISTRY: ghcr.io
+  FRONT_IMAGE: microcrm-front
+  BACK_IMAGE: microcrm-back
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Publier les images
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v5
+
+      - name: Normaliser le nom du propriétaire
+        id: owner
+        run: echo "value=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Préparer Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Se connecter à GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Définir les tags backend
+        id: back_meta
+        run: |
+          echo "version_tag=${{ env.REGISTRY }}/${{ steps.owner.outputs.value }}/${{ env.BACK_IMAGE }}:${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          echo "latest_tag=${{ env.REGISTRY }}/${{ steps.owner.outputs.value }}/${{ env.BACK_IMAGE }}:latest" >> "$GITHUB_OUTPUT"
+
+      - name: Définir les tags frontend
+        id: front_meta
+        run: |
+          echo "version_tag=${{ env.REGISTRY }}/${{ steps.owner.outputs.value }}/${{ env.FRONT_IMAGE }}:${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          echo "latest_tag=${{ env.REGISTRY }}/${{ steps.owner.outputs.value }}/${{ env.FRONT_IMAGE }}:latest" >> "$GITHUB_OUTPUT"
+
+      - name: Construire et pousser l'image backend
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          target: back
+          push: true
+          tags: |
+            ${{ steps.back_meta.outputs.version_tag }}
+            ${{ steps.back_meta.outputs.latest_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Construire et pousser l'image frontend
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          target: front
+          push: true
+          tags: |
+            ${{ steps.front_meta.outputs.version_tag }}
+            ${{ steps.front_meta.outputs.latest_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
