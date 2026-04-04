@@ -1,9 +1,9 @@
-name: Livraison des images Docker
+name: CD
 
 on:
   workflow_run:
     workflows:
-      - Validation continue
+      - CI
     types:
       - completed
     branches:
