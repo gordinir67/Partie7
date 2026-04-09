@@ -65,7 +65,7 @@ jobs:
         run: npm run build
 
       - name: Exécuter les tests front en mode CI
-        run: npm run test -- --watch=false --browsers=ChromeHeadless
+        run: npm run test:ci
 
   sonarcloud:
     name: Analyser avec SonarCloud
@@ -94,15 +94,30 @@ jobs:
           java-version: '17'
           cache: gradle
 
+      - name: Préparer Node.js 20
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: front/package-lock.json
+
       - name: Rendre Gradle utilisable sous Linux
         working-directory: back
         run: |
           sed -i 's/\r$//' gradlew
           chmod +x gradlew
 
-      - name: Compiler les classes Java pour SonarCloud
+      - name: Installer les dépendances frontend
+        working-directory: front
+        run: npm ci
+
+      - name: Générer le coverage backend avec JaCoCo
         working-directory: back
-        run: ./gradlew clean classes testClasses --no-daemon
+        run: ./gradlew clean test jacocoTestReport --no-daemon
+
+      - name: Générer le coverage frontend
+        working-directory: front
+        run: npm run test:ci
 
       - name: Lancer l'analyse SonarCloud
         uses: SonarSource/sonarqube-scan-action@v7
